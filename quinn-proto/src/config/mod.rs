@@ -44,6 +44,7 @@ pub struct EndpointConfig {
         Arc<dyn Fn() -> Box<dyn ConnectionIdGenerator> + Send + Sync>,
     pub(crate) supported_versions: Vec<u32>,
     pub(crate) grease_quic_bit: bool,
+    pub(crate) silent_unknown: bool,
     /// Minimum interval between outgoing stateless reset packets
     pub(crate) min_reset_interval: Duration,
     /// Optional seed to be used internally for random number generation
@@ -61,6 +62,7 @@ impl EndpointConfig {
             connection_id_generator_factory: Arc::new(cid_factory),
             supported_versions: DEFAULT_SUPPORTED_VERSIONS.to_vec(),
             grease_quic_bit: true,
+            silent_unknown: false,
             min_reset_interval: Duration::from_millis(20),
             rng_seed: None,
         }
@@ -134,6 +136,18 @@ impl EndpointConfig {
         self
     }
 
+    /// Drop unsolicited packets that don't belong to a known connection instead of replying.
+    ///
+    /// Suppresses three responses quinn would otherwise emit before the application sees the
+    /// connection: Version Negotiation packets (RFC 9000 § 6.1), stateless resets for unknown
+    /// connection IDs (RFC 9000 § 10.3), and Initial CONNECTION_REFUSED for malformed Initials.
+    /// Disables that conformance in exchange for making the endpoint indistinguishable from a
+    /// closed UDP port to passive scanners. Defaults to `false`.
+    pub fn silent_unknown(&mut self, value: bool) -> &mut Self {
+        self.silent_unknown = value;
+        self
+    }
+
     /// Minimum interval between outgoing stateless reset packets
     ///
     /// Defaults to 20ms. Limits the impact of attacks which flood an endpoint with garbage packets,
@@ -169,6 +183,7 @@ impl fmt::Debug for EndpointConfig {
             // cid_generator_factory not debug
             .field("supported_versions", &self.supported_versions)
             .field("grease_quic_bit", &self.grease_quic_bit)
+            .field("silent_unknown", &self.silent_unknown)
             .field("rng_seed", &self.rng_seed)
             .finish_non_exhaustive()
     }

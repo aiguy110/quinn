@@ -170,6 +170,10 @@ impl Endpoint {
                     debug!("dropping packet with unsupported version");
                     return None;
                 }
+                if self.config.silent_unknown {
+                    debug!("silent-drop: suppressing version negotiation");
+                    return None;
+                }
                 trace!("sending version negotiation");
                 // Negotiate versions
                 Header::VersionNegotiate {
@@ -248,6 +252,9 @@ impl Endpoint {
             None
         } else if dst_cid.is_empty() {
             trace!("dropping unrecognized short packet without ID");
+            None
+        } else if self.config.silent_unknown {
+            debug!("silent-drop: suppressing stateless reset for unknown connection");
             None
         } else {
             // If we got this far, we're receiving a seemingly valid packet for an unknown
@@ -449,6 +456,10 @@ impl Endpoint {
         };
 
         if let Err(reason) = self.early_validate_first_packet(header) {
+            if self.config.silent_unknown {
+                debug!("silent-drop: suppressing initial_close for failed early validation");
+                return None;
+            }
             return Some(DatagramEvent::Response(self.initial_close(
                 header.version,
                 addresses,
@@ -481,6 +492,10 @@ impl Endpoint {
         let token = match IncomingToken::from_header(&header, &server_config, addresses.remote) {
             Ok(token) => token,
             Err(InvalidRetryTokenError) => {
+                if self.config.silent_unknown {
+                    debug!("silent-drop: suppressing initial_close for invalid retry token");
+                    return None;
+                }
                 debug!("rejecting invalid retry token");
                 return Some(DatagramEvent::Response(self.initial_close(
                     header.version,
